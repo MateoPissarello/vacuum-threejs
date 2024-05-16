@@ -1,84 +1,132 @@
 <style>
-    body {
-      margin: 0;
+  body {
+    margin: 0;
+  }
+</style>
+
+<script
+  async
+  src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"
+></script>
+
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
     }
-  </style>
-  
-  <script
-    async
-    src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"
-  ></script>
-  
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
-      }
+  }
+</script>
+
+<script type="module">
+  import * as THREE from "three";
+  import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  );
+
+  const renderer = new THREE.WebGLRenderer();
+  renderer.shadowMap.enabled = true;
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+
+  class Box extends THREE.Mesh {
+    constructor({ width, height, depth }) {
+      super(
+        new THREE.BoxGeometry(width, height, depth),
+        new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+      );
+      this.height = height
     }
-  </script>
-  
-  <script type="module">
-    import * as THREE from 'three'
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-  
-    const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    )
-  
-    const renderer = new THREE.WebGLRenderer()
-    renderer.shadowMap.enabled = true
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    document.body.appendChild(renderer.domElement)
-  
-    const controls = new OrbitControls(camera, renderer.domElement)
+  }
 
-    // const createCube = (dimensions, color) => {
+  // const createCube = (dimensions, color) => {
 
+  const addToScene = (obj) => {
+    scene.add(obj);
+  };
+  const createGround = (position, dimensions) => {
+    let ground = new THREE.Mesh(
+      new THREE.BoxGeometry(dimensions.x, dimensions.y, dimensions.z),
+      new THREE.MeshStandardMaterial({ color: 0x0000ff })
+    );
+    ground.position.copy(position);
+    ground.receiveShadow = true;
+    return ground;
+  };
+  // }
 
-    // }
+  // ----------------------------------------------------------------------------
+  // LANDSCAPE
+  // ----------------------------------------------------------------------------
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+  const cube = new Box(geometry, material);
+  cube.castShadow = true;
+  scene.add(cube);
 
-    // ----------------------------------------------------------------------------
-    // LANDSCAPE
-    // ----------------------------------------------------------------------------
-    const geometry = new THREE.BoxGeometry(1, 1, 1)
-    const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 })
-    const cube = new THREE.Mesh(geometry, material)
-    cube.castShadow = true
-    scene.add(cube)
+  const rooms_dimensions = new THREE.Vector3(8, 0.4, 8);
 
-    const ground = new THREE.Mesh(new THREE.BoxGeometry(5, 0.5, 10), new THREE.MeshStandardMaterial({ color: 0x0000ff }))
-    ground.receiveShadow = true
-    ground.position.y = -2
-    scene.add(ground)
+  // Ground in center
+  const center_ground_position = new THREE.Vector3(0, -2, 0);
+  const center_ground = createGround(center_ground_position, rooms_dimensions);
 
+  // Stores
+  const first_store_ground_position = new THREE.Vector3(0, -2, -8);
+  const first_store = createGround(
+    first_store_ground_position,
+    rooms_dimensions
+  );
 
+  const second_store_ground_position = new THREE.Vector3(8, -2, 0);
+  const second_store = createGround(
+    second_store_ground_position,
+    rooms_dimensions
+  );
+  const third_store_ground_position = new THREE.Vector3(-8, -2, 0);
+  const third_store = createGround(
+    third_store_ground_position,
+    rooms_dimensions
+  );
 
+  const fourth_store_ground_position = new THREE.Vector3(0, -2, 8);
+  const fourth_store = createGround(
+    fourth_store_ground_position,
+    rooms_dimensions
+  );
 
-    
-    
-    // ----------------------------------------------------------------------------
-    // LIGHT
-    // ----------------------------------------------------------------------------
-    const light = new THREE.DirectionalLight(0xffffff, 1)
-    light.position.y = 3
-    light.position.z = 2
-    light.castShadow = true
-    scene.add(light)
+  addToScene(center_ground);
 
-    camera.position.z = 5
-  
-    function animate() {
-      requestAnimationFrame(animate)
-      renderer.render(scene, camera)
+  addToScene(first_store);
+  addToScene(second_store);
+  addToScene(third_store);
+  addToScene(fourth_store);
+
+  // ----------------------------------------------------------------------------
+  // LIGHT
+  // ----------------------------------------------------------------------------
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.y = 3;
+  light.position.z = 2;
+  light.castShadow = true;
+  scene.add(light);
+
+  camera.position.z = 5;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
     //   cube.position.y += -0.01
     //   cube.rotation.x += 0.01
     //   cube.rotation.y += 0.01
-    }
-    //VIDEO: https://www.youtube.com/watch?v=sPereCgQnWQ
-    animate()
-  </script>
+  }
+  //VIDEO: https://www.youtube.com/watch?v=sPereCgQnWQ
+  animate();
+</script>
