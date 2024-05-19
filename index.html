@@ -1,6 +1,7 @@
 <style>
   body {
     margin: 0;
+    background-color: white;
   }
 </style>
 
@@ -23,6 +24,8 @@
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
   const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf6f5f2);
+
   const camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
@@ -43,6 +46,8 @@
       width,
       height,
       depth,
+      receiveShadow = false,
+      castShadow = false,
       color = "#00ff00",
       velocity = { x: 0, y: 0, z: 0 },
       position = { x: 0, y: 0, z: 0 },
@@ -51,6 +56,7 @@
         new THREE.BoxGeometry(width, height, depth),
         new THREE.MeshStandardMaterial({ color })
       );
+      this.receiveShadow = receiveShadow;
       this.height = height;
       this.width = width;
       this.depth = depth;
@@ -68,6 +74,11 @@
 
       this.velocity = velocity;
       this.gravity = -0.005;
+
+      this.movementOnNegativeX = true;
+      this.movementOnPositiveX = true;
+      this.movementOnPositiveZ = true;
+      this.movementOnNegativeZ = true;
     }
     updateSides() {
       this.bottom = this.position.y - this.height / 2;
@@ -91,7 +102,7 @@
         up_store,
         right_store,
         left_store,
-        down_store
+        down_store,
       });
     }
     /**
@@ -137,17 +148,15 @@
     left_store,
     down_store,
   }) {
+    const limit = 0.2;
     const xCollision =
       box.front >= center_ground.back &&
       box.back <= center_ground.front &&
       box.right >= left_store.left &&
       box.left <= right_store.right;
-    const zCollision =
-      box.front >= center_ground.back &&
-      box.front <= left_store.back &&
-      box.back <= left_store.front;
     const yCollision =
-      box.bottom + box.velocity.y <= center_ground.top && box.top >= center_ground.bottom;
+      box.bottom + box.velocity.y <= center_ground.top &&
+      box.top >= center_ground.bottom;
     const xUpAndDownCollision =
       (box.front <= center_ground.back || box.back >= center_ground.front) &&
       box.right >= up_store.left &&
@@ -157,7 +166,46 @@
     const upAndDownStoresCollisions = xUpAndDownCollision && zTopCollision;
     const leftCenterAndRightStoresCollisions = xCollision;
 
-    return (leftCenterAndRightStoresCollisions || upAndDownStoresCollisions) && yCollision;
+    const nearLeftXCollision = box.right - (box.width + limit) >= left_store.left;
+    const nearRightXCollision = box.left + (box.width + limit) <= right_store.right;
+
+    const nearUpAndDownLeftXCollision = box.right - (box.width + limit) >= up_store.left;
+    const nearUpAndDownRightXCollision = box.left + (box.width + limit) <= up_store.right;
+
+
+    const nearXCollision =
+      box.front >= center_ground.back &&
+      box.back <= center_ground.front &&
+      nearLeftXCollision &&
+      nearRightXCollision;
+
+    const nearXUpAndDownCollision =
+      (box.front <= center_ground.back || box.back >= center_ground.front) &&
+      nearUpAndDownLeftXCollision &&
+      nearUpAndDownRightXCollision
+
+
+
+    // Check if the box is out of bounds on the x axis.
+    if (!(nearXCollision || nearXUpAndDownCollision)) {
+      console.log("X POSITION OUT OF BOUNDS");
+      if (!nearLeftXCollision) box.movementOnNegativeX = false;
+      if (!nearRightXCollision) box.movementOnPositiveX = false;
+      if (!nearUpAndDownLeftXCollision) box.movementOnNegativeX = false;
+      if (!nearUpAndDownRightXCollision) box.movementOnPositiveX = false;
+      box.velocity.x = 0;
+    } else {
+      box.movementOnNegativeX = true;
+      box.movementOnPositiveX = true;
+    }
+
+    console.log("leftCenterAndRightStoresCollisions", leftCenterAndRightStoresCollisions)
+    console.log("upAndDownStoresCollisions", upAndDownStoresCollisions)
+    console.log("leftCenterAndRightStoresCollisions or upAndDownStoresCollisions", leftCenterAndRightStoresCollisions || upAndDownStoresCollisions)
+    return (
+      (leftCenterAndRightStoresCollisions || upAndDownStoresCollisions) &&
+      yCollision
+    );
   }
   // const createCube = (dimensions, color) => {
 
@@ -171,8 +219,8 @@
       depth: dimensions.z,
       color: color,
       position: position,
+      receiveShadow: true,
     });
-    ground.receiveShadow = true;
     return ground;
   };
   // }
@@ -189,7 +237,14 @@
   });
   cube.castShadow = true;
   addToScene(cube);
-
+  const wall = new Box({
+    width: 5,
+    height: 5,
+    depth: 0.1,
+    position: { x: 0, y: 0, z: -8 },
+    color: "#ff0000",
+  });
+  addToScene(wall);
   const rooms_dimensions = new THREE.Vector3(8, 0.4, 8);
 
   // Ground in center
@@ -253,11 +308,13 @@
   // ----------------------------------------------------------------------------
   // LIGHT
   // ----------------------------------------------------------------------------
-  const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.y = 3;
-  light.position.z = 2;
-  light.castShadow = true;
-  addToScene(light);
+  const directLight = new THREE.DirectionalLight(0xffffff, 1);
+  directLight.position.y = 3;
+  directLight.position.z = 2;
+  directLight.castShadow = true;
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+  addToScene(directLight);
+  addToScene(ambientLight);
 
   // camera.position.z = 5;
 
@@ -321,11 +378,12 @@
     cube.velocity.x = 0;
     cube.velocity.z = 0;
     // X -> Derecha(d) e Izquierda(a)
-    if (keys.a.pressed) cube.velocity.x -= 0.12;
-    else if (keys.d.pressed) cube.velocity.x += 0.12;
+    if (keys.a.pressed && cube.movementOnNegativeX) cube.velocity.x -= 0.12;
+    else if (keys.d.pressed && cube.movementOnPositiveX)
+      cube.velocity.x += 0.12;
     // Z -> Arriba(w) y Abajo(s)
-    if (keys.w.pressed) cube.velocity.z -= 0.12;
-    else if (keys.s.pressed) cube.velocity.z += 0.12;
+    if (keys.w.pressed && cube.movementOnNegativeZ) cube.velocity.z -= 0.12;
+    else if (keys.s.pressed && cube.movementOnPositiveZ) cube.velocity.z += 0.12;
     cube.update({
       center_ground: center_ground,
       up_store: up_store,
@@ -335,6 +393,6 @@
     });
     // --------------------------------------------------
   }
-  //VIDEO: https://www.youtube.com/watch?v=sPereCgQnWQ
+  //VIDEO: https://www.youtube.com/watch?v=sPereCgQnWQ (1:27:55)
   animate();
 </script>
