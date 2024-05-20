@@ -166,12 +166,15 @@
     const upAndDownStoresCollisions = xUpAndDownCollision && zTopCollision;
     const leftCenterAndRightStoresCollisions = xCollision;
 
-    const nearLeftXCollision = box.right - (box.width + limit) >= left_store.left;
-    const nearRightXCollision = box.left + (box.width + limit) <= right_store.right;
+    const nearLeftXCollision =
+      box.right - (box.width + limit) >= left_store.left;
+    const nearRightXCollision =
+      box.left + (box.width + limit) <= right_store.right;
 
-    const nearUpAndDownLeftXCollision = box.right - (box.width + limit) >= up_store.left;
-    const nearUpAndDownRightXCollision = box.left + (box.width + limit) <= up_store.right;
-
+    const nearUpAndDownLeftXCollision =
+      box.right - (box.width + limit) >= up_store.left;
+    const nearUpAndDownRightXCollision =
+      box.left + (box.width + limit) <= up_store.right;
 
     const nearXCollision =
       box.front >= center_ground.back &&
@@ -182,13 +185,27 @@
     const nearXUpAndDownCollision =
       (box.front <= center_ground.back || box.back >= center_ground.front) &&
       nearUpAndDownLeftXCollision &&
-      nearUpAndDownRightXCollision
+      nearUpAndDownRightXCollision;
 
+    const nearZTopCollisionUp =
+      box.front - (box.depth + limit) >= up_store.back;
+    const nearZTopCollisionDown =
+      box.back + (box.depth + limit) <= down_store.front;
 
+    const nearZTopCollision = nearZTopCollisionUp && nearZTopCollisionDown;
 
+    if (!((nearZTopCollision && nearXUpAndDownCollision) || nearXCollision)) {
+      if (!nearZTopCollisionUp) box.movementOnNegativeZ = false;
+      if (!nearZTopCollisionDown) box.movementOnPositiveZ = false;
+      box.velocity.z = 0;
+    } else {
+      box.movementOnNegativeZ = true;
+      box.movementOnPositiveZ = true;
+    }
+
+    console.log("nearZTopCollision", nearZTopCollision);
     // Check if the box is out of bounds on the x axis.
     if (!(nearXCollision || nearXUpAndDownCollision)) {
-      console.log("X POSITION OUT OF BOUNDS");
       if (!nearLeftXCollision) box.movementOnNegativeX = false;
       if (!nearRightXCollision) box.movementOnPositiveX = false;
       if (!nearUpAndDownLeftXCollision) box.movementOnNegativeX = false;
@@ -198,16 +215,11 @@
       box.movementOnNegativeX = true;
       box.movementOnPositiveX = true;
     }
-
-    console.log("leftCenterAndRightStoresCollisions", leftCenterAndRightStoresCollisions)
-    console.log("upAndDownStoresCollisions", upAndDownStoresCollisions)
-    console.log("leftCenterAndRightStoresCollisions or upAndDownStoresCollisions", leftCenterAndRightStoresCollisions || upAndDownStoresCollisions)
     return (
       (leftCenterAndRightStoresCollisions || upAndDownStoresCollisions) &&
       yCollision
     );
   }
-  // const createCube = (dimensions, color) => {
 
   const addToScene = (obj) => {
     scene.add(obj);
@@ -233,6 +245,7 @@
     width: 1,
     height: 1,
     depth: 1,
+    position: { x: 3, y: 0, z: 3 },
     velocity: { x: 0, y: -0.01, z: 0 },
   });
   cube.castShadow = true;
@@ -244,7 +257,7 @@
     position: { x: 0, y: 0, z: -8 },
     color: "#ff0000",
   });
-  addToScene(wall);
+  // addToScene(wall);
   const rooms_dimensions = new THREE.Vector3(8, 0.4, 8);
 
   // Ground in center
@@ -304,6 +317,42 @@
   addToScene(right_store);
   addToScene(left_store);
   addToScene(down_store);
+
+  // ----------------------------------------------------------------------------
+  // THRASH GENERATION
+  // ----------------------------------------------------------------------------
+
+  const getRandomInt = (min, max) => {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  };
+  const generateThrashOnStore = (store) => {
+    const numberOfThrash = getRandomInt(1, 3);
+    for (let i = 0; i < numberOfThrash; i++) {
+      console.log("Store X position", store.position.x);
+      console.log(
+        "Store X position + width",
+        store.position.x + store.width - 1
+      );
+      let randomX = getRandomInt(
+        store.position.x - store.width / 2 + 1,
+        store.position.x + store.width / 2 - 1
+      );
+      let randomZ = getRandomInt(
+        store.position.z - store.depth / 2 + 1,
+        store.position.z + store.depth / 2 - 1
+      );
+      let thrash = new Box({
+        width: 0.3,
+        height: 0.5,
+        depth: 0.3,
+        position: { x: randomX, y: -1.5, z: randomZ },
+        color: "#ff0000",
+      });
+      addToScene(thrash);
+    }
+  };
+
+  generateThrashOnStore(up_store);
 
   // ----------------------------------------------------------------------------
   // LIGHT
@@ -383,7 +432,8 @@
       cube.velocity.x += 0.12;
     // Z -> Arriba(w) y Abajo(s)
     if (keys.w.pressed && cube.movementOnNegativeZ) cube.velocity.z -= 0.12;
-    else if (keys.s.pressed && cube.movementOnPositiveZ) cube.velocity.z += 0.12;
+    else if (keys.s.pressed && cube.movementOnPositiveZ)
+      cube.velocity.z += 0.12;
     cube.update({
       center_ground: center_ground,
       up_store: up_store,
