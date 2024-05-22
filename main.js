@@ -2,6 +2,33 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
+// ----------------------------------------------------------------------------
+// MESSAGE DIV ELEMENT
+// ----------------------------------------------------------------------------
+const container = document.createElement("div");
+const infoBox = document.createElement("div");
+infoBox.innerText = "¡Bienvenido a la aspiradora inteligente!";
+
+container.style.position = "relative";
+container.style.width = "100vw";
+container.style.height = "100vh";
+
+infoBox.style.position = "absolute";
+infoBox.style.top = "10px";
+infoBox.style.left = "10px";
+infoBox.style.padding = "10px";
+infoBox.style.backgroundColor = "rgba(255, 255, 255, 0.8)";
+infoBox.style.borderRadius = "10px";
+infoBox.style.border = "1px solid black";
+infoBox.style.zIndex = "10";
+
+document.body.style.overflow = "hidden";
+document.body.appendChild(container);
+container.appendChild(infoBox);
+
+// ----------------------------------------------------------------------------
+// SCENE, CAMERA AND RENDERER
+// ----------------------------------------------------------------------------
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf6f5f2);
 
@@ -11,13 +38,13 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   1000
 );
-camera.position.set(7, 7, 7);
+camera.position.set(10, 14, 10);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.shadowMap.enabled = true;
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
-document.body.appendChild(renderer.domElement);
+container.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 
@@ -27,8 +54,8 @@ class Ground extends THREE.Mesh {
     height,
     occupied = false,
     depth,
-    widthSegments = width,
-    depthSegments = height,
+    name,
+    entry = { x: 0, z: 0 },
     receiveShadow = false,
     color = "#0000ff",
     position = { x: 0, y: 0, z: 0 },
@@ -38,6 +65,8 @@ class Ground extends THREE.Mesh {
       new THREE.MeshStandardMaterial({ color })
     );
     this.receiveShadow = receiveShadow;
+    this.name = name;
+    this.entry = entry;
     this.occupied = occupied;
     this.height = height;
     this.width = width;
@@ -247,7 +276,7 @@ const Vacuum = new Box({
   width: 1,
   height: 1,
   depth: 1,
-  position: { x: 3, y: 0, z: 3 },
+  position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: -0.01, z: 0 },
   color: "#808080",
   castShadow: true,
@@ -255,7 +284,7 @@ const Vacuum = new Box({
 addToScene(Vacuum);
 // addToScene(wall);
 const room_dimensions = { x: 8, y: 0.4, z: 8 };
-const room_default_color = "#0000ff";
+const room_default_color = "#000000";
 
 // GROUND IN THE CENTER
 
@@ -266,6 +295,7 @@ const center_ground = new Ground({
   width: room_dimensions.x,
   height: room_dimensions.y,
   depth: room_dimensions.z,
+  name: "center_ground",
   color: room_default_color,
   position: { x: 0, y: -2, z: 0 },
   receiveShadow: true,
@@ -280,8 +310,10 @@ const up_store = new Ground({
   height: room_dimensions.y,
   depth: room_dimensions.z,
   color: room_default_color,
+  name: "up_store",
   occupied: isOcuppied(),
   position: { x: 0, y: -2, z: -8 },
+  entry: { x: 0, z: -4 },
   receiveShadow: true,
 });
 // const up_store = createGround({
@@ -300,8 +332,10 @@ const right_store = new Ground({
   height: room_dimensions.y,
   depth: room_dimensions.z,
   occupied: isOcuppied(),
+  name: "right_store",
   color: room_default_color,
   position: { x: 8, y: -2, z: 0 },
+  entry: { x: 4, z: 0 },
   receiveShadow: true,
 });
 // const right_store = createGround({
@@ -320,8 +354,10 @@ const left_store = new Ground({
   height: room_dimensions.y,
   depth: room_dimensions.z,
   color: room_default_color,
+  name: "left_store",
   occupied: isOcuppied(),
   position: { x: -8, y: -2, z: 0 },
+  entry: { x: -4, z: 0 },
   receiveShadow: true,
 });
 // const left_store = createGround({
@@ -340,6 +376,8 @@ const down_store = new Ground({
   height: room_dimensions.y,
   depth: room_dimensions.z,
   occupied: isOcuppied(),
+  name: "down_store",
+  entry: { x: 0, z: 4 },
   color: room_default_color,
   position: { x: 0, y: -2, z: 8 },
   receiveShadow: true,
@@ -363,14 +401,20 @@ addToScene(down_store);
 const stores = [up_store, right_store, left_store, down_store];
 
 // ----------------------------------------------------------------------------
-// THRASH GENERATION
+// THRASH GENERATION AND SUCTION
 // ----------------------------------------------------------------------------
 
 const getRandomInt = (min, max) => {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 };
-const thrashes = [];
-const generateThrashOnStore = (store) => {
+let thrashes = {
+  up_store: [],
+  right_store: [],
+  left_store: [],
+  down_store: [],
+  total_thrashes: [],
+};
+const generateThrashOnStore = (store, name) => {
   const numberOfThrash = getRandomInt(1, 4);
   for (let i = 0; i < numberOfThrash; i++) {
     let randomX = getRandomInt(
@@ -386,9 +430,10 @@ const generateThrashOnStore = (store) => {
       height: 0.5,
       depth: 0.3,
       position: { x: randomX, y: -1.5, z: randomZ },
-      color: "#ff0000",
+      color: "#ffff00",
     });
-    thrashes.push(thrash);
+    thrashes["total_thrashes"].push(thrash);
+    thrashes[name].push(thrash);
     addToScene(thrash);
   }
 };
@@ -397,112 +442,13 @@ const generationOfThrashOnStores = ({ stores }) => {
   for (let i = 0; i < stores.length; i++) {
     let randomNum = Math.random();
     if (randomNum < 0.8) {
-      generateThrashOnStore(stores[i]);
+      generateThrashOnStore(stores[i], stores[i].name);
     }
   }
 };
 generationOfThrashOnStores({
   stores: stores,
 });
-
-// ----------------------------------------------------------------------------
-// LIGHT
-// ----------------------------------------------------------------------------
-const directLight = new THREE.DirectionalLight(0xffffff, 1);
-directLight.position.y = 3;
-directLight.position.z = 2;
-directLight.castShadow = true;
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-addToScene(directLight);
-addToScene(ambientLight);
-
-// camera.position.z = 5;
-// OCCUPIED AND NOT OCCUPIED STORES LIGHTS
-
-const createSpotLight = ({
-  color,
-  intensity,
-  distance,
-  position = { x: 0, y: 0, z: 0 },
-}) => {
-  let spotLight = new THREE.PointLight(color, intensity, distance);
-  spotLight.position.set(position.x, position.y, position.z);
-  return spotLight;
-};
-
-const upStoreLight = createSpotLight({
-  color: 0x3cb043,
-  intensity: 100,
-  distance: 60,
-  position: {
-    x: up_store.position.x,
-    y: up_store.position.y + 1,
-    z: up_store.position.z,
-  },
-});
-const rightStoreLight = createSpotLight({
-  color: 0x3cb043,
-  intensity: 100,
-  distance: 60,
-  position: {
-    x: right_store.position.x,
-    y: right_store.position.y + 1,
-    z: right_store.position.z,
-  },
-});
-const leftStoreLight = createSpotLight({
-  color: 0x3cb043,
-  intensity: 100,
-  distance: 60,
-  position: {
-    x: left_store.position.x,
-    y: left_store.position.y + 1,
-    z: left_store.position.z,
-  },
-});
-const downStoreLight = createSpotLight({
-  color: 0x3cb043,
-  intensity: 100,
-  distance: 60,
-  position: {
-    x: down_store.position.x,
-    y: down_store.position.y + 1,
-    z: down_store.position.z,
-  },
-});
-addToScene(upStoreLight);
-addToScene(rightStoreLight);
-addToScene(leftStoreLight);
-addToScene(downStoreLight);
-
-const updateLightColors = () => {
-  if (up_store.occupied) {
-    upStoreLight.color.set(0xff0000);
-  } else {
-    upStoreLight.color.set(0x3cb043);
-  }
-  if (right_store.occupied) {
-    rightStoreLight.color.set(0xff0000);
-  } else {
-    rightStoreLight.color.set(0x3cb043);
-  }
-  if (left_store.occupied) {
-    leftStoreLight.color.set(0xff0000);
-  } else {
-    leftStoreLight.color.set(0x3cb043);
-  }
-  if (down_store.occupied) {
-    downStoreLight.color.set(0xff0000);
-  } else {
-    downStoreLight.color.set(0x3cb043);
-  }
-};
-downStoreLight.color.set(0xff0000);
-updateLightColors();
-
-// ----------------------------------------------------------------------------
-// VACUUM COLLISION AND MOVEMENT CONTROL
-// ----------------------------------------------------------------------------
 
 function aspirarBasura(aspiradora, basura, basurasArray) {
   const posAspiradora = aspiradora.position;
@@ -535,120 +481,237 @@ function aspirarBasura(aspiradora, basura, basurasArray) {
   }
 }
 
-const moveToAPosition = (vacuum, position = { x: 0, y: 0, z: 0 }) => {
-  console.log("ME EJECUTO");
-  if (vacuum.position.x < position.x) {
-    vacuum.velocity.x = 0.1;
+// ----------------------------------------------------------------------------
+// LIGHT
+// ----------------------------------------------------------------------------
+const directLight = new THREE.DirectionalLight(0xffffff, 1);
+directLight.position.y = 3;
+directLight.position.z = 2;
+directLight.castShadow = true;
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+addToScene(directLight);
+addToScene(ambientLight);
+
+// camera.position.z = 5;
+// OCCUPIED AND NOT OCCUPIED STORES LIGHTS
+
+const createSpotLight = ({
+  color,
+  intensity = 80,
+  distance = 10,
+  position = { x: 0, y: 0, z: 0 },
+}) => {
+  let spotLight = new THREE.PointLight(color, intensity, distance);
+  spotLight.position.set(position.x, position.y, position.z);
+  return spotLight;
+};
+
+const upStoreLight = createSpotLight({
+  color: 0x3cb043,
+  position: {
+    x: up_store.position.x,
+    y: up_store.position.y + 1,
+    z: up_store.position.z,
+  },
+});
+const rightStoreLight = createSpotLight({
+  color: 0x3cb043,
+  position: {
+    x: right_store.position.x,
+    y: right_store.position.y + 1,
+    z: right_store.position.z,
+  },
+});
+const leftStoreLight = createSpotLight({
+  color: 0x3cb043,
+  position: {
+    x: left_store.position.x,
+    y: left_store.position.y + 1,
+    z: left_store.position.z,
+  },
+});
+const downStoreLight = createSpotLight({
+  color: 0x3cb043,
+  position: {
+    x: down_store.position.x,
+    y: down_store.position.y + 1,
+    z: down_store.position.z,
+  },
+});
+addToScene(upStoreLight);
+addToScene(rightStoreLight);
+addToScene(leftStoreLight);
+addToScene(downStoreLight);
+
+let occupiedColor = 0xff0000;
+let notOccupiedColor = 0x3cb043;
+const updateLightColors = () => {
+  if (up_store.occupied) {
+    upStoreLight.color.set(occupiedColor);
+  } else {
+    upStoreLight.color.set(notOccupiedColor);
   }
-  else if (vacuum.position.x > position.x) {
-    vacuum.velocity.x = -0.1;
+  if (right_store.occupied) {
+    rightStoreLight.color.set(occupiedColor);
+  } else {
+    rightStoreLight.color.set(notOccupiedColor);
   }
-  else if (vacuum.position.z < position.z) {
-    vacuum.velocity.z = 0.1;
+  if (left_store.occupied) {
+    leftStoreLight.color.set(occupiedColor);
+  } else {
+    leftStoreLight.color.set(notOccupiedColor);
   }
-  else if (vacuum.position.z > position.z) {
-    vacuum.velocity.z = -0.1;
-  }
-  else if (vacuum.position.x === position.x && vacuum.position.z === position.z) {
-    vacuum.velocity.x = 0;
-    vacuum.velocity.z = 0;
+  if (down_store.occupied) {
+    downStoreLight.color.set(occupiedColor);
+  } else {
+    downStoreLight.color.set(notOccupiedColor);
   }
 };
 
-// const cellPositions = [];
-// const totalWidth = 24;
-// const totalDepth = 24;
-// const widthSegments = totalWidth;
-// const depthSegments = totalDepth;
-// const geometry = new THREE.BoxGeometry(
-//   totalWidth,
-//   0.1,
-//   totalDepth,
-//   widthSegments,
-//   depthSegments
-// );
-// const material = new THREE.MeshBasicMaterial({
-//   color: 0x00ff00,
-//   wireframe: true,
-// });
-// const ground = new THREE.Mesh(geometry, material);
-// scene.add(ground);
-
-// function creadGridLines(size, divisions) {
-//   const gridHelper = new THREE.GridHelper(size, divisions);
-//   return gridHelper;
-// }
-
-// const gridLines = creadGridLines(24, 24);
-// addToScene(gridLines);
 // ----------------------------------------------------------------------------
-// CONTROLS
+// VACUUM COLLISION AND MOVEMENT CONTROL
 // ----------------------------------------------------------------------------
 
-const keys = {
-  a: {
-    pressed: false,
-  },
-  d: {
-    pressed: false,
-  },
-  w: {
-    pressed: false,
-  },
-  s: {
-    pressed: false,
-  },
+let isZigzagging = false;
+let isMovingToEntry = true;
+let currentIndex = 0;
+let isWaiting = false;
+let clean = [];
+let battery = 100;
+
+const moveToAPosition = (vacuum, store) => {
+  let target = new THREE.Vector3(store.x, vacuum.position.y, store.z);
+  let direction = target.clone().sub(vacuum.position).normalize();
+  let distance = vacuum.position.distanceTo(target);
+
+  if (distance > 0.1) {
+    vacuum.position.add(direction.multiplyScalar(0.08));
+  } else {
+    vacuum.position.set(store.x, vacuum.position.y, store.z);
+  }
 };
-window.addEventListener("keydown", (event) => {
-  switch (event.code) {
-    case "KeyA":
-      keys.a.pressed = true;
-      break;
-    case "KeyD":
-      keys.d.pressed = true;
-      break;
-    case "KeyW":
-      keys.w.pressed = true;
-      break;
-    case "KeyS":
-      keys.s.pressed = true;
-      break;
+const generateZigzagPositions = (store) => {
+  const positions = [];
+  const startX = store.position.x - store.width / 2;
+  const endX = store.position.x + store.width / 2;
+  const startZ = store.position.z - store.depth / 2;
+  const endZ = store.position.z + store.depth / 2;
+  const step = 1;
+  for (let z = startZ; z <= endZ; z += step) {
+    if ((z - startZ) % 2 === 0) {
+      for (let x = startX; x <= endX; x += step) {
+        positions.push({ x, z });
+      }
+    } else {
+      for (let x = endX; x >= startX; x -= step) {
+        positions.push({ x, z });
+      }
+    }
   }
-});
+};
+const moveInZigzag = (vacuum, store) => {
+  currentZigzagIndex = 0;
+  const positions = generateZigzagPositions(store);
+  if (currentZigzagIndex < positions.length) {
+    const currentTarget = positions[currentZigzagIndex];
 
-window.addEventListener("keyup", (event) => {
-  switch (event.code) {
-    case "KeyA":
-      keys.a.pressed = false;
-      break;
-    case "KeyD":
-      keys.d.pressed = false;
-      break;
-    case "KeyW":
-      keys.w.pressed = false;
-      break;
-    case "KeyS":
-      keys.s.pressed = false;
-      break;
+    if (
+      Math.abs(vacuum.position.x - currentTarget.x) < 0.1 &&
+      Math.abs(vacuum.position.z - currentTarget.z) < 0.1
+    ) {
+      currentZigzagIndex++;
+    }
+  } else {
+    isZigzagging = false;
   }
-});
+};
 
-function animate() {
+const checkForThrashInStore = (store) => {
+  return thrashes[store.name].length > 0;
+};
+const isStoreOccupied = (store) => {
+  return store.occupied;
+};
+
+const updatedStores = [up_store, right_store, left_store, down_store];
+
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+async function animate() {
   requestAnimationFrame(animate);
+  updateLightColors();
   // --------------------------------------------------
   // MOVIMIENTO
   // --------------------------------------------------
-  Vacuum.velocity.x = 0;
-  Vacuum.velocity.z = 0;
-  // X -> Derecha(d) e Izquierda(a)
-  if (keys.a.pressed && Vacuum.movementOnNegativeX) Vacuum.velocity.x -= 0.12;
-  else if (keys.d.pressed && Vacuum.movementOnPositiveX)
-    Vacuum.velocity.x += 0.12;
-  // Z -> Arriba(w) y Abajo(s)
-  if (keys.w.pressed && Vacuum.movementOnNegativeZ) Vacuum.velocity.z -= 0.12;
-  else if (keys.s.pressed && Vacuum.movementOnPositiveZ)
-    Vacuum.velocity.z += 0.12;
-  moveToAPosition(Vacuum, { x: 0, y: 0, z: 0 });
+  if (!(clean.length === updatedStores.length)) {
+    if (currentIndex < updatedStores.length && !isWaiting) {
+      const currentStore = updatedStores[currentIndex];
+      moveToAPosition(Vacuum, currentStore.entry); // Moverse a la entrada de una bodega
+      if (
+        Math.abs(Vacuum.position.x - currentStore.entry.x) < 0.1 &&
+        Math.abs(Vacuum.position.z - currentStore.entry.z) < 0.1 // Verificar si la aspiradora llegó a la entrada de la tienda
+      ) {
+        // Verificar si la bodega anterior estaba ocupada
+        console.log("Llegó a la entrada de la tienda");
+        if (currentIndex !== 0) {
+          let lastStore = updatedStores[currentIndex - 1];
+          let lastStoreIsOccupied = isStoreOccupied(lastStore);
+          if (lastStoreIsOccupied) {
+            console.log(
+              "La Bodega anterior estaba ocupada, cambiando estado a no ocupada"
+            );
+            lastStore.occupied = false;
+            updateLightColors();
+          }
+        }
+        console.log("Escaneando tienda...");
+        isWaiting = true;
+        await delay(2000);
+        console.log("¡Tienda escaneada!");
+        isWaiting = false;
+        // Obtener si la bodega actual está ocupada
+        let actualStoreIsOccupied = isStoreOccupied(currentStore);
+        // Verificar si la bodega actual está ocupada y es la última, para desocuparla
+        if (actualStoreIsOccupied && currentIndex === stores.length - 1) {
+          console.log(
+            "La ultima bodega está ocupada, esperando a que se desocupe"
+          );
+          isWaiting = true;
+          await delay(2000);
+          console.log("¡Bodega desocupada!");
+          isWaiting = false;
+          currentStore.occupied = false;
+          actualStoreIsOccupied = isStoreOccupied(currentStore);
+          updateLightColors();
+        }
+        // Verificar si la bodega actual está ocupada
+        if (actualStoreIsOccupied) {
+          console.log("La Bodega está ocupada");
+          currentIndex++;
+        } else if (actualStoreIsOccupied === false) {
+          // Verificar si hay basura en la bodega
+          let thrashesInStore = checkForThrashInStore(currentStore);
+          if (thrashesInStore) {
+            console.log("Hay basura en la bodega");
+            console.log("Limpiando la bodega...");
+            // AQUI VA EL CÓDIGO DE LIMPIEZA
+
+            isWaiting = true;
+            await delay(2000);
+            console.log("¡Bodega limpia!");
+            clean.push(currentStore);
+            isWaiting = false;
+            currentIndex++;
+          } else {
+            console.log("No hay basura en la bodega");
+            console.log("¡Bodega limpia!");
+            clean.push(currentStore);
+            currentIndex++;
+          }
+        }
+      }
+    }
+  }
+
   Vacuum.update({
     center_ground: center_ground,
     up_store: up_store,
@@ -656,14 +719,16 @@ function animate() {
     left_store: left_store,
     down_store: down_store,
   });
-  console.log("VELOCIDAD", Vacuum.velocity.x);
   // --------------------------------------------------
   // THRASH SUCTION
   // --------------------------------------------------
-  thrashes.forEach((thrash) => {
+  thrashes["total_thrashes"].forEach((thrash) => {
     aspirarBasura(Vacuum, thrash, thrashes);
   });
-
+  // --------------------------------------------------
+  // MOVEMENT TO STORES
+  // --------------------------------------------------
+  // moveToStoreEntry(right_store);
   //   moveToAPosition(Vacuum, { x: 0, y: 0, z: 0 });
   // --------------------------------------------------
   renderer.render(scene, camera);
