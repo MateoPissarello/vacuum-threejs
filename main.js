@@ -482,11 +482,9 @@ function aspirarBasura(aspiradora, basura, basurasArray) {
     // Eliminar la basura de la escena y del arreglo
     basura.visible = false;
     const index = basurasArray.indexOf(basura);
-    console.log("Indice de la basura", index);
     if (index !== -1) {
       basurasArray.splice(index, 1);
-      console.log(basurasArray);
-      console.log("¡La aspiradora ha aspirado una basura!");
+      // console.log("¡La aspiradora ha aspirado una basura!");
     }
   }
 }
@@ -588,12 +586,14 @@ let currentIndex = 0;
 let allStoresCleaned = false;
 let isWaiting = false;
 let pendingIndex = 0;
+let arrivedOnLastPosition = false;
+let isGoingToCharge = false;
 let isCleaning = false; // Variable para controlar si la aspiradora está limpiando
 let clean = [];
-
 let pendingCleaning = []; // Almacenar las bodegas que no se pudieron limpiar inicialmente
 let battery = 100;
 let cleanedStoresCount = 0;
+let chargingStationPosition = { x: 0, y: Vacuum.position.y, z: -2 }; // Posición de la estación de carga
 
 const moveToAPosition = async (vacuum, targetPosition) => {
   let target = new THREE.Vector3(
@@ -601,7 +601,7 @@ const moveToAPosition = async (vacuum, targetPosition) => {
     vacuum.position.y,
     targetPosition.z
   );
-  console.log("Me muevo a ", target);
+  // console.log("Me muevo a ", target);
   let direction = target.clone().sub(vacuum.position).normalize();
   let distance = vacuum.position.distanceTo(target);
 
@@ -619,32 +619,46 @@ const cleanStoreZigzag = async (store) => {
   const rows = Math.floor(store.width / step);
   const cols = Math.floor(store.depth / step);
   let direction = 1; // 1 for moving forward, -1 for moving backward
-  console.log("Estoy limpiando ", store);
-
   let currentX = store.left + step / 2;
   let currentZ = store.back + step / 2;
+  const tolerance = 0.1; // Umbral de tolerancia
 
-  for (let col = 0; col < cols; col++) {
-    for (let row = 0; row < rows; row++) {
-      Vacuum.position.set(currentX, Vacuum.position.y, currentZ);
-      await delay(50); // Simulate the cleaning time
-      currentX += direction * step;
+  if (!isGoingToCharge) {
+    for (let col = 0; col < cols; col++) {
+      for (let row = 0; row < rows; row++) {
+        Vacuum.position.set(currentX, Vacuum.position.y, currentZ);
+        await delay(50); // Simulate the cleaning time
+        currentX += direction * step;
+        debugger;
+        // Verificar si hemos limpiado la mitad de la bodega con un umbral
+        if (col === Math.floor(cols / 2) && row === 0) {
+          cleanedStoresCount += 0.5;
+          console.log("Media bodega limpia, incrementando contador en 0.5");
+        }
 
-      if (
-        col === Math.floor(cols / 2) &&
-        row === 0 &&
-        currentX === store.left + step / 2
-      ) {
-        cleanedStoresCount += 0.5;
-        if (cleanedStoresCount === 2.5) {
+        // Verificar si se debe ir a la estación de carga
+        if (cleanedStoresCount % 2.5 === 0 && cleanedStoresCount > 0) {
+          console.log("cleanedStoresCount", cleanedStoresCount);
+          console.log("Limpié 2.5 bodegas, yendo a la estación de carga...");
           cleanedStoresCount = 0;
-          await goToChargingStation(Vacuum);
+          isGoingToCharge = true;
+          await goToChargingStation(Vacuum, {
+            x: currentX,
+            y: Vacuum.position.y,
+            z: currentZ,
+          });
+          // Reset currentX and currentZ to resume cleaning after charging
+          if (!isGoingToCharge) {
+            currentX -= direction * step; // Correct currentX after charging
+            direction *= -1; // Correct direction after charging
+            currentZ -= step; // Correct currentZ after charging
+          }
         }
       }
+      direction *= -1; // Change direction
+      currentZ += step;
+      currentX += direction * step; // Move to the next row
     }
-    direction *= -1; // Change direction
-    currentZ += step;
-    currentX += direction * step; // Move to the next row
   }
   await moveToAPosition(Vacuum, store.entry);
   await delay(1000); // Simulate the time to move to the next store
@@ -659,13 +673,21 @@ const isStoreOccupied = (store) => {
   return store.occupied;
 };
 
-const goToChargingStation = async (vacuum) => {
-  console.log("Yendo a la estación de carga...");
-  await moveToAPosition(vacuum, charging_station.position);
-  console.log("Cargando batería...");
-  await delay(3000);
-  battery = 100;
-  console.log("Batería cargada al 100%");
+const goToChargingStation = async (vacuum, lastPosition) => {
+  // debugger;
+  // console.log("Yendo a la estación de carga...");
+  // const reachedChargi = await moveToAPosition(vacuum, chargingStationPosition);
+  // await moveToAPosition(vacuum, chargingStationPosition);
+  // console.log("Cargando batería...");
+  // await delay(5000); // Simular el tiempo de carga
+  // battery = 100;
+  // console.log("Batería cargada al 100%");
+  // let reached = false;
+  // while (!reached) {
+  //   reached = await moveToAPosition(vacuum, lastPosition);
+  //   console.log("Regresando a la última posición...");
+  // }
+  // isGoingToCharge = false;
 };
 
 const updatedStores = [up_store, right_store, left_store, down_store];
@@ -678,53 +700,32 @@ async function cleanPendingStores(pendingStores) {
       const store = pendingStores[pendingIndex];
       const reached = await moveToAPosition(Vacuum, store.entry);
       if (reached) {
-        console.log("Llegó a la entrada de la tienda");
+        // console.log("Llegó a la entrada de la tienda");
 
-        console.log("Escaneando tienda");
+        // console.log("Escaneando tienda...");
         isWaiting = true;
         await delay(2000);
-        console.log("¡Tienda escaneada!");
+        // console.log("¡Tienda escaneada!");
         isWaiting = false;
         let thrashesInStore = checkForThrashInStore(store);
         if (thrashesInStore) {
-          console.log("Hay basura en la bodega");
-          console.log("Limpiando la bodega...");
+          // console.log("Hay basura en la bodega");
+          // console.log("Limpiando la bodega...");
           pendingIndex++;
           await cleanStoreZigzag(store);
-          console.log("¡Bodega limpia!");
+          // console.log("¡Bodega limpia!");
           clean.push(store);
         } else {
-          console.log("No hay basura en la bodega");
-          console.log("¡Bodega limpia!");
+          // console.log("No hay basura en la bodega");
+          // console.log("¡Bodega limpia!");
           clean.push(store);
           pendingIndex++;
         }
-
-        // if (reached & !isMoving) {
-        //   console.log("Llegó a la entrada de la bodega");
-        //   let thrashesInStore = checkForThrashInStore(store);
-        //   if (thrashesInStore) {
-        //     console.log("Limpiando bodegas pendientes...");
-        //     console.log("Bodegas pendientes:", pendingStores.length);
-        //     console.log("Hay basura en la bodega");
-        //     console.log("Limpiando la bodega...");
-        //     if (!isCleaning) {
-        //       pendingStores = await cleanStoreZigzag(store, pendingCleaning);
-        //     }
-        //     console.log("¡Bodega limpia!");
-        //     clean.push(store);
-        //   } else {
-        //     console.log("No hay basura en la bodega");
-        //     console.log("¡Bodega limpia!");
-        //     pendingStores.splice(0, 1);
-        //     clean.push(store);
-        //   }
-        // }
       }
     }
   } else {
     allStoresCleaned = true;
-    console.log("¡Todas las bodegas han sido limpiadas!");
+    // console.log("¡Todas las bodegas han sido limpiadas!");
     return;
   }
 }
@@ -739,33 +740,33 @@ async function moveToStoreAndClean() {
     const reached = await moveToAPosition(Vacuum, currentStore.entry); // Moverse a la entrada de una bodega
 
     if (reached) {
-      console.log("Llegó a la entrada de la tienda");
+      // console.log("Llegó a la entrada de la tienda");
       if (currentIndex !== 0) {
         let lastStore = updatedStores[currentIndex - 1];
         let lastStoreIsOccupied = isStoreOccupied(lastStore);
         if (lastStoreIsOccupied) {
-          console.log(
-            "La Bodega anterior estaba ocupada, cambiando estado a no ocupada"
-          );
+          // console.log(
+          //   "La Bodega anterior estaba ocupada, cambiando estado a no ocupada"
+          // );
           lastStore.occupied = false;
           updateLightColors();
         }
       }
 
-      console.log("Escaneando tienda...");
+      // console.log("Escaneando tienda...");
       isWaiting = true;
       await delay(2000);
-      console.log("¡Tienda escaneada!");
+      // console.log("¡Tienda escaneada!");
       isWaiting = false;
 
       let actualStoreIsOccupied = isStoreOccupied(currentStore);
       if (actualStoreIsOccupied && currentIndex === stores.length - 1) {
-        console.log(
-          "La ultima bodega está ocupada, esperando a que se desocupe"
-        );
+        // console.log(
+        //   "La ultima bodega está ocupada, esperando a que se desocupe"
+        // );
         isWaiting = true;
         await delay(2000);
-        console.log("¡Bodega desocupada!");
+        // console.log("¡Bodega desocupada!");
         isWaiting = false;
         currentStore.occupied = false;
         actualStoreIsOccupied = isStoreOccupied(currentStore);
@@ -773,21 +774,21 @@ async function moveToStoreAndClean() {
       }
 
       if (actualStoreIsOccupied) {
-        console.log("La Bodega está ocupada");
+        // console.log("La Bodega está ocupada");
         pendingCleaning.push(currentStore);
         currentIndex++;
       } else if (actualStoreIsOccupied === false) {
         let thrashesInStore = checkForThrashInStore(currentStore);
         if (thrashesInStore) {
-          console.log("Hay basura en la bodega");
-          console.log("Limpiando la bodega...");
+          // console.log("Hay basura en la bodega");
+          // console.log("Limpiando la bodega...");
           currentIndex++;
           await cleanStoreZigzag(currentStore);
-          console.log("¡Bodega limpia!");
+          // console.log("¡Bodega limpia!");
           clean.push(currentStore);
         } else {
-          console.log("No hay basura en la bodega");
-          console.log("¡Bodega limpia!");
+          // console.log("No hay basura en la bodega");
+          // console.log("¡Bodega limpia!");
           clean.push(currentStore);
           currentIndex++;
         }
