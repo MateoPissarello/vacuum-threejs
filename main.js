@@ -26,6 +26,9 @@ document.body.style.overflow = "hidden";
 document.body.appendChild(container);
 container.appendChild(infoBox);
 
+function updateInfoBox(message) {
+  infoBox.innerText = message;
+}
 // ----------------------------------------------------------------------------
 // SCENE, CAMERA AND RENDERER
 // ----------------------------------------------------------------------------
@@ -436,9 +439,9 @@ const generateThrashOnStore = (store, name) => {
       store.position.z + store.depth / 2 - 1
     );
     let thrash = new Box({
-      width: 0.3,
+      width: 0.8,
       height: 0.5,
-      depth: 0.3,
+      depth: 0.8,
       position: { x: randomX, y: -1.5, z: randomZ },
       color: "#ffff00",
     });
@@ -587,13 +590,14 @@ let allStoresCleaned = false;
 let isWaiting = false;
 let pendingIndex = 0;
 let arrivedOnLastPosition = false;
-let isGoingToCharge = false;
+let movingToLastPosition = false;
+let movingToChargingStation = false;
+let arrivedOnChargingStation = false;
 let isCleaning = false; // Variable para controlar si la aspiradora está limpiando
 let clean = [];
 let pendingCleaning = []; // Almacenar las bodegas que no se pudieron limpiar inicialmente
 let battery = 100;
 let cleanedStoresCount = 0;
-let chargingStationPosition = { x: 0, y: Vacuum.position.y, z: -2 }; // Posición de la estación de carga
 
 const moveToAPosition = async (vacuum, targetPosition) => {
   let target = new THREE.Vector3(
@@ -618,49 +622,103 @@ const cleanStoreZigzag = async (store) => {
   const step = 1;
   const rows = Math.floor(store.width / step);
   const cols = Math.floor(store.depth / step);
+  let lastInfo = {
+    row: 0,
+    col: 0,
+    currentX: 0,
+    currentZ: 0,
+    direction: 0,
+  };
   let direction = 1; // 1 for moving forward, -1 for moving backward
   let currentX = store.left + step / 2;
   let currentZ = store.back + step / 2;
   const tolerance = 0.1; // Umbral de tolerancia
 
-  if (!isGoingToCharge) {
+  if (!movingToChargingStation && !movingToLastPosition) {
     for (let col = 0; col < cols; col++) {
       for (let row = 0; row < rows; row++) {
-        Vacuum.position.set(currentX, Vacuum.position.y, currentZ);
-        await delay(50); // Simulate the cleaning time
-        currentX += direction * step;
+        if (!movingToChargingStation && !movingToLastPosition) {
+          Vacuum.position.set(currentX, Vacuum.position.y, currentZ);
+          await delay(50); // Simulate the cleaning time
+        }
+        if (!movingToChargingStation && !movingToLastPosition) {
+          currentX += direction * step;
+        }
         debugger;
-        // Verificar si hemos limpiado la mitad de la bodega con un umbral
-        if (col === Math.floor(cols / 2) && row === 0) {
-          cleanedStoresCount += 0.5;
-          console.log("Media bodega limpia, incrementando contador en 0.5");
+        if (movingToChargingStation) {
+          col = lastInfo.col;
+          row = lastInfo.row;
+          const reached = await moveToAPosition(
+            Vacuum,
+            charging_station.position
+          );
+          if (reached) {
+            console.log("Llegó a la estaación de carga");
+            console.log("Cargando batería...");
+            await delay(5000);
+            battery = 100;
+            console.log("Batería cargada al 100%");
+            movingToChargingStation = false;
+            movingToLastPosition = true;
+          }
+        }
+        if (movingToLastPosition) {
+          col = lastInfo.col;
+          row = lastInfo.row;
+          const reached = await moveToAPosition(Vacuum, {
+            x: lastInfo.currentX,
+            z: lastInfo.currentZ,
+          });
+          if (reached) {
+            console.log("Llegó a la última posición");
+            await delay(1000);
+            movingToLastPosition = false;
+            direction = lastInfo.direction *= -1;
+            currentX += direction * step;
+            currentZ += step;
+          }
         }
 
-        // Verificar si se debe ir a la estación de carga
-        if (cleanedStoresCount % 2.5 === 0 && cleanedStoresCount > 0) {
-          console.log("cleanedStoresCount", cleanedStoresCount);
-          console.log("Limpié 2.5 bodegas, yendo a la estación de carga...");
-          cleanedStoresCount = 0;
-          isGoingToCharge = true;
-          await goToChargingStation(Vacuum, {
-            x: currentX,
-            y: Vacuum.position.y,
-            z: currentZ,
-          });
-          // Reset currentX and currentZ to resume cleaning after charging
-          if (!isGoingToCharge) {
+        // Verificar si hemos limpiado la mitad de la bodega con un umbral
+        if (!movingToChargingStation && !movingToLastPosition) {
+          if (col === Math.floor(cols / 2) && row === 0) {
+            cleanedStoresCount += 0.5;
+            console.log("Media bodega limpia, incrementando contador en 0.5");
+          }
+
+          // Verificar si se debe ir a la estación de carga
+          if (cleanedStoresCount % 2.5 === 0 && cleanedStoresCount > 0) {
+            console.log("cleanedStoresCount", cleanedStoresCount);
+            console.log("Limpié 2.5 bodegas, yendo a la estación de carga...");
+            cleanedStoresCount = 0;
+            movingToChargingStation = true;
+            // await goToChargingStation(Vacuum, {
+            //   x: currentX,
+            //   y: Vacuum.position.y,
+            //   z: currentZ,
+            // });
+            // Reset currentX and currentZ to resume cleaning after charging
             currentX -= direction * step; // Correct currentX after charging
             direction *= -1; // Correct direction after charging
             currentZ -= step; // Correct currentZ after charging
+            lastInfo = {
+              row: row,
+              col: col,
+              currentX: currentX,
+              currentZ: currentZ,
+              direction: direction,
+            };
           }
         }
       }
-      direction *= -1; // Change direction
-      currentZ += step;
-      currentX += direction * step; // Move to the next row
+      if (!movingToChargingStation && !movingToLastPosition) {
+        direction *= -1; // Change direction
+        currentZ += step;
+        currentX += direction * step; // Move to the next row
+      }
     }
   }
-  await moveToAPosition(Vacuum, store.entry);
+  // await moveToAPosition(Vacuum, store.entry);
   await delay(1000); // Simulate the time to move to the next store
   cleanedStoresCount += 0.5;
 };
@@ -673,30 +731,19 @@ const isStoreOccupied = (store) => {
   return store.occupied;
 };
 
-const goToChargingStation = async (vacuum, lastPosition) => {
-  // debugger;
-  // console.log("Yendo a la estación de carga...");
-  // const reachedChargi = await moveToAPosition(vacuum, chargingStationPosition);
-  // await moveToAPosition(vacuum, chargingStationPosition);
-  // console.log("Cargando batería...");
-  // await delay(5000); // Simular el tiempo de carga
-  // battery = 100;
-  // console.log("Batería cargada al 100%");
-  // let reached = false;
-  // while (!reached) {
-  //   reached = await moveToAPosition(vacuum, lastPosition);
-  //   console.log("Regresando a la última posición...");
-  // }
-  // isGoingToCharge = false;
-};
-
 const updatedStores = [up_store, right_store, left_store, down_store];
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
 async function cleanPendingStores(pendingStores) {
   if (pendingStores.length > 0) {
-    if (pendingIndex < pendingStores.length && !isWaiting && !isCleaning) {
+    if (
+      pendingIndex < pendingStores.length &&
+      !isWaiting &&
+      !isCleaning &&
+      !movingToChargingStation &&
+      !movingToLastPosition
+    ) {
       const store = pendingStores[pendingIndex];
       const reached = await moveToAPosition(Vacuum, store.entry);
       if (reached) {
@@ -735,7 +782,13 @@ async function moveToStoreAndClean() {
     await cleanPendingStores(pendingCleaning);
   }
 
-  if (currentIndex < updatedStores.length && !isWaiting && !isCleaning) {
+  if (
+    currentIndex < updatedStores.length &&
+    !isWaiting &&
+    !isCleaning &&
+    !movingToChargingStation &&
+    !movingToLastPosition
+  ) {
     const currentStore = updatedStores[currentIndex];
     const reached = await moveToAPosition(Vacuum, currentStore.entry); // Moverse a la entrada de una bodega
 
