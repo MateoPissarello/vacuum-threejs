@@ -26,9 +26,9 @@ document.body.style.overflow = "hidden";
 document.body.appendChild(container);
 container.appendChild(infoBox);
 
-function updateInfoBox(message) {
+const updateInfoBox = (message) => {
   infoBox.innerText = message;
-}
+};
 // ----------------------------------------------------------------------------
 // SCENE, CAMERA AND RENDERER
 // ----------------------------------------------------------------------------
@@ -58,6 +58,7 @@ class Ground extends THREE.Mesh {
     occupied = false,
     depth,
     name,
+    description,
     entry = { x: 0, z: 0 },
     receiveShadow = false,
     color = "#0000ff",
@@ -74,7 +75,7 @@ class Ground extends THREE.Mesh {
     this.height = height;
     this.width = width;
     this.depth = depth;
-
+    this.description = description;
     this.position.set(position.x, position.y, position.z);
 
     this.bottom = this.position.y - this.height / 2;
@@ -299,6 +300,7 @@ const center_ground = new Ground({
   height: room_dimensions.y,
   depth: room_dimensions.z,
   name: "center_ground",
+  description: "centro",
   color: room_default_color,
   position: { x: 0, y: -2, z: 0 },
   receiveShadow: true,
@@ -314,6 +316,7 @@ const up_store = new Ground({
   depth: room_dimensions.z,
   color: room_default_color,
   name: "up_store",
+  description: "bodega de arriba",
   occupied: isOcuppied(),
   position: { x: 0, y: -2, z: -8 },
   entry: { x: 0, z: -4 },
@@ -336,6 +339,7 @@ const right_store = new Ground({
   depth: room_dimensions.z,
   occupied: isOcuppied(),
   name: "right_store",
+  description: "bodega derecha",
   color: room_default_color,
   position: { x: 8, y: -2, z: 0 },
   entry: { x: 4, z: 0 },
@@ -358,6 +362,7 @@ const left_store = new Ground({
   depth: room_dimensions.z,
   color: room_default_color,
   name: "left_store",
+  description: "bodega izquierda",
   occupied: isOcuppied(),
   position: { x: -8, y: -2, z: 0 },
   entry: { x: -4, z: 0 },
@@ -380,6 +385,7 @@ const down_store = new Ground({
   depth: room_dimensions.z,
   occupied: isOcuppied(),
   name: "down_store",
+  description: "bodega de abajo",
   entry: { x: 0, z: 4 },
   color: room_default_color,
   position: { x: 0, y: -2, z: 8 },
@@ -401,6 +407,7 @@ const charging_station = new Ground({
   depth: 1,
   color: "#00ff00",
   name: "charging_station",
+  description: "estación de carga",
   position: { x: 0, y: -2, z: 0 },
   receiveShadow: true,
 });
@@ -593,6 +600,8 @@ let arrivedOnLastPosition = false;
 let movingToLastPosition = false;
 let movingToChargingStation = false;
 let arrivedOnChargingStation = false;
+let lastStoreCleaned = false;
+let lastStoreCleanedNoPending = false;
 let isCleaning = false; // Variable para controlar si la aspiradora está limpiando
 let clean = [];
 let pendingCleaning = []; // Almacenar las bodegas que no se pudieron limpiar inicialmente
@@ -644,7 +653,6 @@ const cleanStoreZigzag = async (store) => {
         if (!movingToChargingStation && !movingToLastPosition) {
           currentX += direction * step;
         }
-        debugger;
         if (movingToChargingStation) {
           col = lastInfo.col;
           row = lastInfo.row;
@@ -653,11 +661,12 @@ const cleanStoreZigzag = async (store) => {
             charging_station.position
           );
           if (reached) {
-            console.log("Llegó a la estaación de carga");
-            console.log("Cargando batería...");
+            updateInfoBox("Llegó a la estación de carga");
+            await delay(1000);
+            updateInfoBox("Cargando batería...");
             await delay(5000);
             battery = 100;
-            console.log("Batería cargada al 100%");
+            updateInfoBox("Batería cargada al 100%");
             movingToChargingStation = false;
             movingToLastPosition = true;
           }
@@ -666,11 +675,11 @@ const cleanStoreZigzag = async (store) => {
           col = lastInfo.col;
           row = lastInfo.row;
           const reached = await moveToAPosition(Vacuum, {
-            x: lastInfo.currentX,
+            x: lastInfo.currentX + 1,
             z: lastInfo.currentZ,
           });
           if (reached) {
-            console.log("Llegó a la última posición");
+            updateInfoBox("Llegó a la última posición, continuando...");
             await delay(1000);
             movingToLastPosition = false;
             direction = lastInfo.direction *= -1;
@@ -688,8 +697,6 @@ const cleanStoreZigzag = async (store) => {
 
           // Verificar si se debe ir a la estación de carga
           if (cleanedStoresCount % 2.5 === 0 && cleanedStoresCount > 0) {
-            console.log("cleanedStoresCount", cleanedStoresCount);
-            console.log("Limpié 2.5 bodegas, yendo a la estación de carga...");
             cleanedStoresCount = 0;
             movingToChargingStation = true;
             // await goToChargingStation(Vacuum, {
@@ -736,7 +743,9 @@ const updatedStores = [up_store, right_store, left_store, down_store];
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
 async function cleanPendingStores(pendingStores) {
-  if (pendingStores.length > 0) {
+  if (pendingStores.length > 0 && pendingIndex < pendingStores.length) {
+    console.log("indice", pendingIndex);
+    console.log("longitudi", pendingCleaning.length);
     if (
       pendingIndex < pendingStores.length &&
       !isWaiting &&
@@ -747,41 +756,57 @@ async function cleanPendingStores(pendingStores) {
       const store = pendingStores[pendingIndex];
       const reached = await moveToAPosition(Vacuum, store.entry);
       if (reached) {
-        // console.log("Llegó a la entrada de la tienda");
+        if (pendingIndex === 0) {
+          let lastStore = updatedStores[updatedStores.length - 1];
+          let lastStoreIsOccupied = isStoreOccupied(lastStore);
+          if (lastStoreIsOccupied) {
+            lastStore.occupied = false;
+            updateLightColors();
+          }
+        }
+        updateInfoBox(`Llegó a la entrada de la ${store.description}`);
 
-        // console.log("Escaneando tienda...");
+        updateInfoBox(`Escaneando ${store.description}...`);
         isWaiting = true;
         await delay(2000);
-        // console.log("¡Tienda escaneada!");
+        updateInfoBox("¡Escaneada!");
         isWaiting = false;
         let thrashesInStore = checkForThrashInStore(store);
         if (thrashesInStore) {
-          // console.log("Hay basura en la bodega");
-          // console.log("Limpiando la bodega...");
+          updateInfoBox(`Hay basura en la ${store.description}`);
+          updateInfoBox(`Limpiando la ${store.description}...`);
           pendingIndex++;
           await cleanStoreZigzag(store);
-          // console.log("¡Bodega limpia!");
+          updateInfoBox(`¡${store.description} limpia!`);
           clean.push(store);
+          if (pendingIndex === pendingStores.length) {
+            lastStoreCleaned = true;
+          }
         } else {
-          // console.log("No hay basura en la bodega");
-          // console.log("¡Bodega limpia!");
+          updateInfoBox(`No hay basura en la ${store.description}`);
           clean.push(store);
           pendingIndex++;
+          if (pendingIndex === pendingStores.length) {
+            lastStoreCleaned = true;
+          }
         }
       }
     }
-  } else {
+  }
+  if (lastStoreCleaned) {
+    updateInfoBox("¡Todas las bodegas han sido limpiadas!");
     allStoresCleaned = true;
-    // console.log("¡Todas las bodegas han sido limpiadas!");
-    return;
   }
 }
 
 async function moveToStoreAndClean() {
-  if (currentIndex === updatedStores.length) {
+  if (currentIndex === updatedStores.length && pendingCleaning.length > 0) {
     await cleanPendingStores(pendingCleaning);
   }
-
+  if (lastStoreCleanedNoPending) {
+    updateInfoBox("¡Todas las bodegas han sido limpiadas!");
+    allStoresCleaned = true;
+  }
   if (
     currentIndex < updatedStores.length &&
     !isWaiting &&
@@ -793,33 +818,34 @@ async function moveToStoreAndClean() {
     const reached = await moveToAPosition(Vacuum, currentStore.entry); // Moverse a la entrada de una bodega
 
     if (reached) {
-      // console.log("Llegó a la entrada de la tienda");
+      updateInfoBox(`Llegó a la entrada de la ${currentStore.description}`);
       if (currentIndex !== 0) {
         let lastStore = updatedStores[currentIndex - 1];
         let lastStoreIsOccupied = isStoreOccupied(lastStore);
         if (lastStoreIsOccupied) {
-          // console.log(
-          //   "La Bodega anterior estaba ocupada, cambiando estado a no ocupada"
-          // );
           lastStore.occupied = false;
           updateLightColors();
         }
       }
 
-      // console.log("Escaneando tienda...");
+      updateInfoBox(`Escaneando ${currentStore.description}...`);
       isWaiting = true;
       await delay(2000);
-      // console.log("¡Tienda escaneada!");
+      updateInfoBox("¡Escaneada!");
       isWaiting = false;
 
       let actualStoreIsOccupied = isStoreOccupied(currentStore);
-      if (actualStoreIsOccupied && currentIndex === stores.length - 1) {
-        // console.log(
-        //   "La ultima bodega está ocupada, esperando a que se desocupe"
-        // );
+      if (
+        actualStoreIsOccupied &&
+        currentIndex === stores.length - 1 &&
+        pendingCleaning.length === 0
+      ) {
         isWaiting = true;
+        updateInfoBox(
+          `Ultima ${currentStore.description} ocupada, esperando...`
+        );
         await delay(2000);
-        // console.log("¡Bodega desocupada!");
+        updateInfoBox("¡Bodega desocupada!");
         isWaiting = false;
         currentStore.occupied = false;
         actualStoreIsOccupied = isStoreOccupied(currentStore);
@@ -827,23 +853,34 @@ async function moveToStoreAndClean() {
       }
 
       if (actualStoreIsOccupied) {
-        // console.log("La Bodega está ocupada");
+        updateInfoBox("La Bodega está ocupada");
         pendingCleaning.push(currentStore);
         currentIndex++;
       } else if (actualStoreIsOccupied === false) {
         let thrashesInStore = checkForThrashInStore(currentStore);
         if (thrashesInStore) {
-          // console.log("Hay basura en la bodega");
-          // console.log("Limpiando la bodega...");
+          updateInfoBox(`Hay basura en la ${currentStore.description}`);
+          updateInfoBox(`Limpiando la ${currentStore.description}...`);
           currentIndex++;
           await cleanStoreZigzag(currentStore);
-          // console.log("¡Bodega limpia!");
+          updateInfoBox(`¡${currentStore.description} limpia!`);
           clean.push(currentStore);
+          if (
+            currentIndex === updatedStores.length &&
+            pendingCleaning.length === 0
+          ) {
+            lastStoreCleanedNoPending = true;
+          }
         } else {
-          // console.log("No hay basura en la bodega");
-          // console.log("¡Bodega limpia!");
+          updateInfoBox(`No hay basura en la ${currentStore.description}`);
           clean.push(currentStore);
           currentIndex++;
+          if (
+            currentIndex === updatedStores.length &&
+            pendingCleaning.length === 0
+          ) {
+            lastStoreCleanedNoPending = true;
+          }
         }
       }
     }
@@ -867,6 +904,8 @@ async function animate() {
     thrashes["total_thrashes"].forEach((thrash) => {
       aspirarBasura(Vacuum, thrash, thrashes["total_thrashes"]);
     });
+  } else if (allStoresCleaned) {
+    updateInfoBox("¡Todas las bodegas han sido limpiadas!");
   }
 
   renderer.render(scene, camera);
